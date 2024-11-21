@@ -224,7 +224,7 @@ local createControlFunctions = {
 		-- Reset the template (ZO_Options_Slider) before calling InitializeControl
 		slider:SetHandler("OnValueChanged", nil)
 		updateControlFunctions[LibHarvensAddonSettings.ST_SLIDER](self, lastControl)
-		slider:SetHandler("OnValueChanged", function(control, value)
+		slider:SetHandler("OnValueChanged",	function(control, value)
 				local formattedValue = tonumber(string.format(self.format, value))
 				if self.unit and #self.unit > 0 then
 					control.label:SetText(formattedValue .. self:GetString(self:GetValueOrCallback(self.unit)))
@@ -356,7 +356,6 @@ local setupControlFunctions = {
 		self.setFunction = params.setFunction
 		self.getFunction = params.getFunction
 		self.default = params.default
-		self.ignoreDefault = params.ignoreDefault
 		self.disable = params.disable
 	end,
 	[LibHarvensAddonSettings.ST_SLIDER] = function(self, params)
@@ -370,7 +369,6 @@ local setupControlFunctions = {
 		self.setFunction = params.setFunction
 		self.getFunction = params.getFunction
 		self.default = params.default
-		self.ignoreDefault = params.ignoreDefault
 		self.disable = params.disable
 	end,
 	[LibHarvensAddonSettings.ST_BUTTON] = function(self, params)
@@ -378,7 +376,6 @@ local setupControlFunctions = {
 		self.labelText = params.label
 		self.tooltipText = params.tooltip
 		self.default = params.default
-		self.ignoreDefault = params.ignoreDefault
 		self.disable = params.disable
 		self.buttonText = params.buttonText
 	end,
@@ -390,7 +387,6 @@ local setupControlFunctions = {
 		self.setFunction = params.setFunction
 		self.getFunction = params.getFunction
 		self.default = params.default
-		self.ignoreDefault = params.ignoreDefault
 		self.disable = params.disable
 	end,
 	[LibHarvensAddonSettings.ST_DROPDOWN] = function(self, params)
@@ -400,7 +396,6 @@ local setupControlFunctions = {
 		self.setFunction = params.setFunction
 		self.getFunction = params.getFunction
 		self.default = params.default
-		self.ignoreDefault = params.ignoreDefault
 		self.disable = params.disable
 	end,
 	[LibHarvensAddonSettings.ST_LABEL] = function(self, params)
@@ -417,7 +412,6 @@ local setupControlFunctions = {
 		self.setFunction = params.setFunction
 		self.getFunction = params.getFunction
 		self.default = params.default
-		self.ignoreDefault = params.ignoreDefault
 		self.disable = params.disable
 	end,
 	[LibHarvensAddonSettings.ST_ICONPICKER] = function(self, params)
@@ -427,7 +421,6 @@ local setupControlFunctions = {
 		self.setFunction = params.setFunction
 		self.getFunction = params.getFunction
 		self.default = params.default
-		self.ignoreDefault = params.ignoreDefault
 		self.disable = params.disable
 	end
 }
