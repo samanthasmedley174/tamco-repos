@@ -1,14 +1,14 @@
 local addon = ZO_Object:Subclass()
 addon.name = "iChat"
-addon.defaults = { }
-addon.accountDefaults = { }
+addon.defaults = {}
+addon.accountDefaults = {}
 addon.events = ZO_CallbackObject:New()
 
 local em = GetEventManager()
 
 do
 	local identifier = "iCHAT_ASYNC_TASK"
-	local async = LibStub("LibAsync")
+	local async = LibAsync
 	addon.task = async:Create(identifier)
 end
 
@@ -17,13 +17,12 @@ function addon:Initialize()
 
 	self.account = ZO_SavedVars:NewAccountWide("iChatSavedVar", 1, nil, self.accountDefaults)
 	self.player = ZO_SavedVars:NewCharacterIdSettings("iChatSavedVar", 1, nil, self.defaults)
-	iChatHistory = iChatHistory or { }
+	iChatHistory = iChatHistory or {}
 
 	self.events:FireCallbacks("OnLoad")
 	-- Give someone a chance to do something after all others did something.
 	self.events:FireCallbacks("OnLoaded")
 end
-
 
 -- do
 -- local function UpdateControls()
@@ -46,13 +45,17 @@ end
 -- end
 
 function addon:InitSettings()
-	local LibHarvensAddonSettings = LibStub("LibHarvensAddonSettings-1.0", LibStub.SILENT)
-	if not LibHarvensAddonSettings then return end
+	local LibHarvensAddonSettings = LibHarvensAddonSettings
+	if not LibHarvensAddonSettings then
+		return
+	end
 
 	local settings = LibHarvensAddonSettings:AddAddon("iChat")
-	if not settings then return end
+	if not settings then
+		return
+	end
 	addon.settingsControls = settings
-	settings.version = "1.0.1"
+	settings.version = "1.0.7"
 	settings.allowDefaults = true
 	-- settings.website = "http://www.esoui.com/downloads/"
 end
@@ -61,23 +64,29 @@ end
 
 local function GetLocalTimeStamp()
 	local utc = GetTimeStamp()
-	local localTimeShift = GetSecondsSinceMidnight() -(utc % 86400)
-	if localTimeShift < -12 * 60 * 60 then localTimeShift = localTimeShift + 86400 end
+	local localTimeShift = GetSecondsSinceMidnight() - (utc % 86400)
+	if localTimeShift < -12 * 60 * 60 then
+		localTimeShift = localTimeShift + 86400
+	end
 	return utc + localTimeShift
 end
 
 local function FormatTime(eventArgs)
 	local text = eventArgs.formattedEventText
-	if not text then return end
+	if not text then
+		return
+	end
 	return string.format("|cCCCCCC[%s]|r %s", ZO_FormatTime(eventArgs.localTimeStamp % 86400, TIME_FORMAT_STYLE_CLOCK_TIME, TIME_FORMAT_PRECISION_TWENTY_FOUR_HOUR), text)
 end
 
 do
-	local eventArgs = { }
+	local eventArgs = {}
 	local function PreFormatting(orgFormatter, ...)
 		eventArgs.cancel, eventArgs.isHandled = false, false
 		addon.events:FireCallbacks("PreFormatting", eventArgs)
-		if eventArgs.cancel then return end
+		if eventArgs.cancel then
+			return
+		end
 		if eventArgs.isHandled then
 			return eventArgs.formattedEventText, eventArgs.targetChannel, eventArgs.shownDisplayName, eventArgs.rawMessageText
 		else
@@ -108,7 +117,7 @@ do
 	end
 
 	-- The new formatters are in the original table
-	local newFormatter = ZO_ChatSystem_GetEventHandlers()
+	local newFormatter = CHAT_ROUTER:GetRegisteredMessageFormatters()
 	-- The original formatters are saved in a new table. Sounds odd, but is right.
 	local orgFormatter = ZO_ShallowTableCopy(newFormatter)
 
@@ -175,18 +184,19 @@ do
 end
 
 do
-	local orgOnChatEvent = SharedChatSystem.OnChatEvent
-	function SharedChatSystem.OnChatEvent(self, ...)
-		local chat, entry = self, { ...}
+	local orgOnChatEvent = CHAT_ROUTER.FormatAndAddChatMessage
+	function CHAT_ROUTER.FormatAndAddChatMessage(self, ...)
+		local chat, entry = self, {...}
 		entry[#entry + 1] = GetLocalTimeStamp()
-		local function PrePostMessage()
-			addon.events:FireCallbacks("OnChatEvent", chat, entry)
-		end
 
 		local function PostMessage()
 			orgOnChatEvent(chat, unpack(entry))
 		end
-		addon.task:Call(PrePostMessage):Then(PostMessage)
+		local function PrePostMessage(task)
+			addon.events:FireCallbacks("OnChatEvent", chat, entry)
+			task:Call(PostMessage)
+		end
+		addon.task:Call(PrePostMessage)
 	end
 end
 
@@ -247,7 +257,9 @@ do
 end
 
 local function OnAddonLoaded(event, name)
-	if name ~= addon.name then return end
+	if name ~= addon.name then
+		return
+	end
 	em:UnregisterForEvent(addon.name, EVENT_ADD_ON_LOADED)
 
 	addon:Initialize()

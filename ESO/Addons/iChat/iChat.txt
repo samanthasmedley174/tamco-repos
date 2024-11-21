@@ -1,18 +1,14 @@
 ## Title: iChat
 ## Author: votan
-## APIVersion: 100024
-## Version: 1.0.1
+## APIVersion: 100033 100034
+## AddOnVersion: 10070
+## Version: 1.0.7
 --- To be loaded as early as possible (for buffering d()-output) this addon should not depend on anything. OptionalDependsOn: LibStub LibAddonMenu-2.0
-## DependsOn: LibStub LibHarvensAddonSettings LibAsync LibCustomMenu
+## DependsOn: LibHarvensAddonSettings LibAsync LibCustomMenu
+## OptionalDependsOn: LibChatMessage
 ## SavedVariables: iChatSavedVar iChatHistory
 
 ## This Add-On is not created by, affiliated with or sponsored by ZeniMax Media Inc. or its affiliates. The Elder Scrolls� and related logos are registered trademarks or trademarks of ZeniMax Media Inc. in the United States and/or other countries. All rights reserved.
-
-## Libraries:
--- LibStub/LibStub.lua
--- LibHarvensAddonSettings/LibHarvensAddonSettings.lua
--- LibAsync/LibAsync.lua
--- LibCustomMenu/LibCustomMenu.lua
 
 #lang/strings.lua
 #lang/$(language).lua
