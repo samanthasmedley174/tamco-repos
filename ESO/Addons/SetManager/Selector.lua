@@ -6,19 +6,6 @@ addon.Selector = {
 		[CRAFTING_TYPE_CLOTHIER] = true,
 		[CRAFTING_TYPE_WOODWORKING] = true,
 	},
-	allowedArmorType =
-	{
-		[CRAFTING_TYPE_BLACKSMITHING] = { [ARMORTYPE_HEAVY] = true },
-		[CRAFTING_TYPE_CLOTHIER] = { [ARMORTYPE_LIGHT] = true, [ARMORTYPE_MEDIUM] = true },
-		[CRAFTING_TYPE_WOODWORKING] = { },
-	},
-	allowedWeaponType =
-	{
-		[CRAFTING_TYPE_BLACKSMITHING] = { [WEAPONTYPE_AXE] = true, [WEAPONTYPE_DAGGER] = true, [WEAPONTYPE_HAMMER] = true, [WEAPONTYPE_SWORD] = true, [WEAPONTYPE_TWO_HANDED_AXE] = true, [WEAPONTYPE_TWO_HANDED_HAMMER] = true, [WEAPONTYPE_TWO_HANDED_SWORD] = true, },
-		[CRAFTING_TYPE_CLOTHIER] = { },
-		[CRAFTING_TYPE_WOODWORKING] = { [WEAPONTYPE_BOW] = true, [WEAPONTYPE_FIRE_STAFF] = true, [WEAPONTYPE_FROST_STAFF] = true, [WEAPONTYPE_HEALING_STAFF] = true, [WEAPONTYPE_LIGHTNING_STAFF] = true, [WEAPONTYPE_SHIELD] = true },
-	},
-
 }
 local selector = SET_MANAGER.Selector
 
@@ -26,7 +13,7 @@ local wm = GetWindowManager()
 local em = GetEventManager()
 
 function selector:UpdateSetTemplates()
-	local templates = self.templates
+	local templates = addon.account.templates
 	self.setTemplates:Clear()
 	for _, template in ipairs(templates) do
 		self.setTemplates:AddEntry(template)
@@ -72,61 +59,43 @@ function selector:InitSetTemplates()
 			end
 			return false
 		end
-		local function SetMaterialQuantity(creation, requiredLevel, requiredCP)
-			local data = creation.materialList:GetSelectedData()
-			local value = data.isChampionPoint and requiredCP or requiredLevel
-			for index, item in ipairs(data.combinations) do
-				if item.createsItemOfLevel >= value then
-					creation.materialQuantitySpinner:ModifyValue(index)
-					return true
-				end
-			end
-			return false
-		end
 		local function OnSelectedSlotChanged(control)
 			self.selectedSlot = control.selectedSlot
 			local GetItemLinkName, GetSmithingPatternResultLink = GetItemLinkName, GetSmithingPatternResultLink
 			local itemLink = control.data[control.selectedSlot]
 			local armorType = GetItemLinkArmorType(itemLink)
 			local weaponType = GetItemLinkWeaponType(itemLink)
-			local itemStyleId = GetItemLinkItemStyle(itemLink)
+			local itemStyle = GetItemLinkItemStyle(itemLink)
 			local itemTrait = GetItemLinkTraitInfo(itemLink)
 			local requiredRank, requiredLevel, requiredCP = GetItemLinkSmithingRequiredRankAndLevels(itemLink)
 			local itemName = GetItemLinkName(itemLink)
+
+
+			local craftingType = armorType > 0 and armorType or weaponType
+
+			SMITHING.modeBar.m_object:SelectDescriptor(2)
 			local creation = SMITHING.creationPanel
-			local success
+			creation.tabs.m_object:SelectDescriptor(armorType > 0 and 4 or 3)
+			SetIndex(creation.patternList, function(_, newData) return itemName == GetItemLinkName(GetSmithingPatternResultLink(newData.patternIndex, 1, 7, 1, 1)) end)
+			SetIndex(creation.materialList, function(_, newData) return newData.rankRequirement == requiredRank end)
+			SetIndex(creation.styleList, function(_, newData) return newData.itemStyle == itemStyle end)
+			SetIndex(creation.traitList, function(_, newData) return newData.traitType == itemTrait end)
 
-			SMITHING.modeBar.m_object:SelectDescriptor(SMITHING_MODE_CREATION)
+			local patternIndex = creation.patternList:GetSelectedData().patternIndex
+			local materialIndex = creation.materialList:GetSelectedData().materialIndex
 
-			creation.tabs.m_object:SelectDescriptor((armorType > 0 or weaponType == WEAPONTYPE_SHIELD) and ZO_SMITHING_CREATION_FILTER_TYPE_SET_ARMOR or ZO_SMITHING_CREATION_FILTER_TYPE_SET_WEAPONS)
-			success = SetIndex(creation.patternList, function(_, newData) return itemName == GetItemLinkName(GetSmithingPatternResultLink(newData.patternIndex, 1, 7, 1, 1)) end)
-			if not success then
-				local equipType = GetItemLinkEquipType(itemLink)
-				if armorType > 0 then
-					success = SetIndex(creation.patternList, function(_, newData)
-						local otherLink = GetSmithingPatternResultLink(newData.patternIndex, 1, 7, 1, 1)
-						return armorType == GetItemLinkArmorType(otherLink) and equipType == GetItemLinkEquipType(otherLink)
-					end )
-				else
-					success = SetIndex(creation.patternList, function(_, newData)
-						local otherLink = GetSmithingPatternResultLink(newData.patternIndex, 1, 7, 1, 1)
-						return weaponType == GetItemLinkWeaponType(otherLink) and equipType == GetItemLinkEquipType(otherLink)
-					end )
-				end
-			end
-			if SetIndex(creation.materialList, function(_, newData) return newData.rankRequirement == requiredRank end) then
-				if GetAPIVersion() < 100022 then
-					success = SetMaterialQuantity(creation, requiredLevel, requiredCP) and success
-				else
-					success = true
-				end
-			else
-				success = false
-			end
-			success = SetIndex(creation.styleList, function(_, newData) return newData.itemStyleId == itemStyleId end) and success
-			success = SetIndex(creation.traitList, function(_, newData) return newData.traitType == itemTrait end) and success
+			local GetItemLinkRequiredLevel, GetItemLinkRequiredChampionPoints = GetItemLinkRequiredLevel, GetItemLinkRequiredChampionPoints
+			local GetSmithingPatternNextMaterialQuantity = GetSmithingPatternNextMaterialQuantity
 
-			PlaySound(success and SOUNDS.DEFAULT_CLICK or SOUNDS.NEGATIVE_CLICK)
+			local quantity = 1
+			local itemLink
+			repeat
+				quantity = GetSmithingPatternNextMaterialQuantity(patternIndex, materialIndex, quantity, 1, 1)
+				itemLink = GetSmithingPatternResultLink(patternIndex, materialIndex, quantity, 1, 1)
+			until requiredLevel == GetItemLinkRequiredLevel(itemLink) and requiredCP == GetItemLinkRequiredChampionPoints(itemLink)
+			creation.materialQuantitySpinner:ModifyValue(quantity)
+
+			PlaySound(SOUNDS.DEFAULT_CLICK)
 		end
 		local function OnTemplateChanged(self)
 			local rowData = self.data
@@ -135,14 +104,14 @@ function selector:InitSetTemplates()
 
 		local function onMouseEnter(rowControl)
 			if rowControl.itemLink then
-				InitializeTooltip(SetItemTooltip, rowControl, TOPRIGHT, 0, -104, TOPLEFT)
-				SetItemTooltip:SetTemplateItemLink(rowControl.itemLink, self.setTemplates:GetSelectedData(), false)
+				InitializeTooltip(ItemTooltip, rowControl, TOPRIGHT, 0, -104, TOPLEFT)
+				addon:FakeEquippedItemTooltip(rowControl.itemLink)
 				self.setTemplates.hoveredSlot = rowControl.slotId
 				-- KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybindStripDescriptorMouseOver)
 			end
 		end
 		local function onMouseExit(rowControl)
-			ClearTooltip(SetItemTooltip)
+			ClearTooltip(ItemTooltip, rowControl)
 			self.setTemplates.hoveredSlot = nil
 			-- KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybindStripDescriptorMouseOver)
 		end
@@ -159,7 +128,7 @@ function selector:InitSetTemplates()
 			edit:SetText(data.name)
 
 			edit = control:GetNamedChild("AccessoriesSectionText")
-			edit:SetColor(ZO_DEFAULT_DISABLED_COLOR:UnpackRGB())
+			edit:SetColor(0.5, 0.5, 0.5)
 
 			local weaponsAllowed = CanSmithingWeaponPatternsBeCraftedHere()
 			local apparelAllowed = CanSmithingApparelPatternsBeCraftedHere()
@@ -173,23 +142,19 @@ function selector:InitSetTemplates()
 				slotControl:SetHandler("OnMouseExit", onMouseExit)
 				local enabled = slotControl.itemLink ~= nil
 				if enabled then
-					local itemType = GetItemLinkArmorType(slotControl.itemLink)
-					if itemType == 0 then
-						itemType = GetItemLinkWeaponType(slotControl.itemLink)
-						enabled = weaponsAllowed and self.allowedWeaponType[self.interactionType][itemType]
+					if GetItemLinkArmorType(slotControl.itemLink) == 0 then
+						enabled = weaponsAllowed
 					else
-						enabled = apparelAllowed and self.allowedArmorType[self.interactionType][itemType]
+						enabled = apparelAllowed
 					end
 				end
-				if not enabled then
-					slotControl:GetNamedChild("Icon"):SetColor(1, 0.1, 0.1)
+				if enabled then
+					enabled = CanSetBeCraftedHere(slotControl.itemLink)
+				end
+				if not enabled and slotControl.itemLink then
+					slotControl:GetNamedChild("Icon"):SetColor(1, 0, 0)
 				else
-					if slotControl.itemLink == nil or CanSetBeCraftedHere(slotControl.itemLink) then
-						slotControl:GetNamedChild("Icon"):SetColor(1, 1, 1)
-					else
-						slotControl:GetNamedChild("Icon"):SetColor(0.9, 0.9, 0.2)
-						enabled = true
-					end
+					slotControl:GetNamedChild("Icon"):SetColor(1, 1, 1)
 				end
 				slotControl:SetEnabled(enabled)
 			end
@@ -240,33 +205,27 @@ function selector:Init()
 
 	SETMANAGER_SELECTOR_FRAGMENT:RegisterCallback("StateChange", function(oldState, newState)
 		if newState == SCENE_FRAGMENT_SHOWING then
-			self.window:SetMouseEnabled(true)
+			self.interactionType = GetCraftingInteractionType()
+			local allowed = self.allowedInteractions[self.interactionType]
+			self.window:SetMouseEnabled(allowed)
 
-			self:CreateSetNameToData()
-			local allowed, name = GetItemLinkSetInfo(GetSmithingPatternResultLink(GetNumSmithingPatterns() / 2 + 1, 1, 7, 1, 1))
-			if allowed then
-				self.currentSetName = name
-				self.templates = addon.account.templates
-				self:UpdateSetTemplates()
-			else
-				self.currentSetName = nil
+			if allowed and CanSmithingSetPatternsBeCraftedHere() then
+				self:CreateSetNameToData()
+				local name
+				allowed, name = GetItemLinkSetInfo(GetSmithingPatternResultLink(GetNumSmithingPatterns() / 2 + 1, 1, 7, 1, 1))
+				if allowed then
+					self.currentSetName = name
+					self:UpdateSetTemplates()
+				else
+					self.currentSetName = nil
+				end
 			end
-			-- elseif newState == SCENE_FRAGMENT_SHOWN then
-			-- elseif newState == SCENE_FRAGMENT_HIDING then
+		elseif newState == SCENE_FRAGMENT_SHOWN then
+		elseif newState == SCENE_FRAGMENT_HIDING then
 		elseif newState == SCENE_FRAGMENT_HIDDEN then
 			collectgarbage()
 		end
 	end )
 
 	self:InitSetTemplates()
-
-	local orgSetHidden = SMITHING.creationPanel.SetHidden
-	function SMITHING.creationPanel:SetHidden(hidden)
-		SETMANAGER_SELECTOR_FRAGMENT:SetHiddenForReason("hidden", hidden)
-		selector.interactionType = GetCraftingInteractionType()
-		local allowed = selector.allowedInteractions[selector.interactionType] and CanSmithingSetPatternsBeCraftedHere() or false
-		SETMANAGER_SELECTOR_FRAGMENT:SetHiddenForReason("wrongStation", not allowed)
-		SETMANAGER_SELECTOR_FRAGMENT:Refresh()
-		return orgSetHidden(self, hidden)
-	end
 end
