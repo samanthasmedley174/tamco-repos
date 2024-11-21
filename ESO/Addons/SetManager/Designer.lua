@@ -7,50 +7,74 @@ local em = GetEventManager()
 local ROW_TYPE_ID = 1
 local applySetFilter
 
-designer.modes = {
-	Inventory = "INVENTORY",
-	Crafting = "CRAFTING",
-	Buy = "BUY",
-}
+local function OnSlotClicked(control)
+	local parent = control:GetParent()
+	for equipSlot, other in pairs(parent.slots) do
+		local selected = other == control
+		other:SetState(selected and BSTATE_PRESSED or BSTATE_NORMAL)
+		if selected then parent.selectedSlot = equipSlot end
+	end
+	if parent.OnSelectedChanged then parent.OnSelectedChanged(parent) end
+end
 
-local function ReturnItemLink(itemLink) return itemLink end
+local function UpdateSlot(self)
+	local iconControl = self:GetNamedChild("Icon")
+	if self.itemLink then
+		local icon = GetItemLinkInfo(self.itemLink)
+		iconControl:SetTexture(icon)
+	else
+		iconControl:SetTexture(ZO_Character_GetEmptyEquipSlotTexture(self.slotId))
+	end
+end
+
+function designer:InitializeSlots(parent)
+	if parent.slots then return end
+
+	local slots =
+	{
+		[EQUIP_SLOT_HEAD] = parent:GetNamedChild("EquipmentSlotsHead"),
+		[EQUIP_SLOT_NECK] = parent:GetNamedChild("EquipmentSlotsNeck"),
+		[EQUIP_SLOT_CHEST] = parent:GetNamedChild("EquipmentSlotsChest"),
+		[EQUIP_SLOT_SHOULDERS] = parent:GetNamedChild("EquipmentSlotsShoulder"),
+		[EQUIP_SLOT_MAIN_HAND] = parent:GetNamedChild("EquipmentSlotsMainHand"),
+		[EQUIP_SLOT_OFF_HAND] = parent:GetNamedChild("EquipmentSlotsOffHand"),
+		[EQUIP_SLOT_POISON] = parent:GetNamedChild("EquipmentSlotsPoison"),
+		[EQUIP_SLOT_WAIST] = parent:GetNamedChild("EquipmentSlotsBelt"),
+		[EQUIP_SLOT_LEGS] = parent:GetNamedChild("EquipmentSlotsLeg"),
+		[EQUIP_SLOT_FEET] = parent:GetNamedChild("EquipmentSlotsFoot"),
+		[EQUIP_SLOT_COSTUME] = parent:GetNamedChild("EquipmentSlotsCostume"),
+		[EQUIP_SLOT_RING1] = parent:GetNamedChild("EquipmentSlotsRing1"),
+		[EQUIP_SLOT_RING2] = parent:GetNamedChild("EquipmentSlotsRing2"),
+		[EQUIP_SLOT_HAND] = parent:GetNamedChild("EquipmentSlotsGlove"),
+		[EQUIP_SLOT_BACKUP_MAIN] = parent:GetNamedChild("EquipmentSlotsBackupMain"),
+		[EQUIP_SLOT_BACKUP_OFF] = parent:GetNamedChild("EquipmentSlotsBackupOff"),
+		[EQUIP_SLOT_BACKUP_POISON] = parent:GetNamedChild("EquipmentSlotsBackupPoison"),
+	}
+
+	parent.slots = slots
+
+	parent:GetNamedChild("PaperDoll"):SetTexture(GetUnitSilhouetteTexture("player"))
+
+	local ZO_Character_GetEmptyEquipSlotTexture = ZO_Character_GetEmptyEquipSlotTexture
+	for slotId, slotControl in pairs(slots) do
+		slotControl.slotId = slotId
+		slotControl.Update = UpdateSlot
+		slotControl.OnSlotClicked = OnSlotClicked
+		slotControl:SetHandler("OnClicked", function(control, ...) control:OnSlotClicked(...) end)
+	end
+end
 
 do
-	function designer:InitializeEditableSlots(parent)
-		addon:InitializeSlots(parent)
 
-		local function SetIndex(listControl, matchFunc)
-			local index = listControl:FindIndexFromData(0, matchFunc)
-			if index then
-				listControl:SetSelectedIndex(index, true, true)
-				return true
-			end
-			return false
-		end
-		local baseClick = parent.OnSlotClicked
-		local function OnSlotEditableClicked(parent, control, button, ...)
+	function designer:InitializeEditableSlots(parent)
+		self:InitializeSlots(parent)
+
+		local baseClick
+		local function OnSlotEditableClicked(control, button, ...)
 			if button == MOUSE_BUTTON_INDEX_LEFT then
-				baseClick(parent, control, button, ...)
-				local selectedSet = self.setTemplates:GetSelectedData()
-				local itemLink = selectedSet[self.selectedSlot]
-				if itemLink then
-					local itemStyle = GetItemLinkItemStyle(itemLink)
-					SetIndex(designer.styleList, function(_, newData) return newData.itemStyle == itemStyle end)
-				end
+				baseClick(control, button, ...)
 			elseif button == MOUSE_BUTTON_INDEX_RIGHT then
-				baseClick(parent, control, button, ...)
-				if IsChatSystemAvailableForCurrentPlatform() and self.selectedSlot then
-					ClearMenu()
-					AddCustomMenuItem(GetString(SET_MANAGER_REMOVE_ITEM), function() self:RemoveItemFromSlot(self.selectedSlot) end)
-					AddCustomMenuItem(GetString(SI_ITEM_ACTION_LINK_TO_CHAT), function()
-						local selectedSet = self.setTemplates:GetSelectedData()
-						if not selectedSet then return end
-						if self.selectedSlot then
-							ZO_LinkHandler_InsertLink(ZO_LinkHandler_CreateChatLink(ReturnItemLink, selectedSet[self.selectedSlot]))
-						end
-					end )
-					ShowMenu(control)
-				end
+				local parent = control:GetParent()
 			end
 		end
 		parent.OnSlotClicked = OnSlotEditableClicked
@@ -69,6 +93,8 @@ do
 		edit:SetHandler("OnTextChanged", TextChanged)
 		for slotId, slotControl in pairs(parent.slots) do
 			slotControl:EnableMouseButton(MOUSE_BUTTON_INDEX_RIGHT, true)
+			baseClick = slotControl.OnSlotClicked
+			slotControl.OnSlotClicked = OnSlotEditableClicked
 		end
 	end
 end
@@ -89,11 +115,27 @@ local function HideRowHighlight(rowControl, hidden)
 		end
 		if hidden then
 			highlight.animation:PlayBackward()
-			ClearTooltip(SetItemTooltip, rowControl)
+			ClearTooltip(ItemTooltip, rowControl)
 		else
 			highlight.animation:PlayForward()
 		end
 	end
+end
+
+local function AddLine(tooltip, text, color, alignment)
+	local r, g, b = color:UnpackRGB()
+	tooltip:AddLine(text, "", r, g, b, CENTER, MODIFY_TEXT_TYPE_NONE, alignment, alignment ~= TEXT_ALIGN_LEFT)
+end
+
+local function AddLineCenter(tooltip, text, color)
+	if not color then color = ZO_TOOLTIP_DEFAULT_COLOR end
+	AddLine(tooltip, text, color, TEXT_ALIGN_CENTER)
+end
+
+local function AddLineTitle(tooltip, text, color)
+	if not color then color = ZO_SELECTED_TEXT end
+	local r, g, b = color:UnpackRGB()
+	tooltip:AddLine(text, "ZoFontHeader3", r, g, b, CENTER, MODIFY_TEXT_TYPE_UPPERCASE, TEXT_ALIGN_CENTER, true)
 end
 
 function designer:UpdateSetsList()
@@ -105,21 +147,16 @@ function designer:UpdateSetsList()
 		ZO_ScrollList_AddCategory(scrollList, categoryId)
 	end
 
-	local format, createLink = ZO_CachedStrFormat, string.format
+	local format, createLink = zo_strformat, string.format
 	local GetItemLinkSetInfo, ZO_ScrollList_CreateDataEntry = GetItemLinkSetInfo, ZO_ScrollList_CreateDataEntry
 
 	local sets = addon.allSets
-
-	local level = GetUnitLevel("player")
-	local subId = addon:CreateSubItemId(level, GetUnitChampionPoints("player"), ITEM_QUALITY_LEGENDARY)
-	local itemLinkTemplate = createLink("|H1:item:%%i:%i:%i:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0|h|h", subId, level)
-
 	for itemId, setInfo in pairs(sets) do
-		local itemLink = createLink(itemLinkTemplate, itemId)
+		local itemLink = createLink("|H1:item:%i:304:50:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0|h|h", itemId)
 		local _, name = GetItemLinkSetInfo(itemLink, false)
 
 		local rowData = { id = itemId, name = name, itemLink = itemLink, setInfo = setInfo }
-		local categoryId = setInfo.category == addon.SetType.Craftable and addon.setCategory.Craftable or addon.setCategory.NonCraftable
+		local categoryId = setInfo.isCraftable and addon.setCategory.Craftable or addon.setCategory.NonCraftable
 		dataList[#dataList + 1] = ZO_ScrollList_CreateDataEntry(ROW_TYPE_ID, rowData, categoryId)
 	end
 
@@ -135,20 +172,16 @@ function designer:UpdateItemList()
 	ZO_ScrollList_Clear(scrollList)
 	local dataList = ZO_ScrollList_GetDataList(scrollList)
 	applySetFilter(self, dataList)
-	table.sort(dataList, function(a, b) return a.data.itemLink < b.data.itemLink end)
-
 	ZO_ScrollList_Commit(scrollList)
-	SetManagerTopLevelCraft:SetHidden((addon.player.mode == designer.modes.Inventory) or(#dataList == 0))
-	local isCraftable = self.setsList.selected and addon.allSets[self.setsList.selected].category == addon.SetType.Craftable or false
-	self.styleList:SetEnabled(isCraftable)
+	SetManagerTopLevelCraft:SetHidden((addon.player.mode == "INVENTORY") or(#dataList == 0))
+	local isCraftable = self.setsList.selected and addon.allSets[self.setsList.selected].isCraftable or false
+	self.styleList.control:SetHidden(not isCraftable)
 
 	scrollList.dirty = false
 end
 
 function designer:UpdateSetTemplates()
 	local templates = addon.account.templates
-	table.sort(templates, function(a, b) return(a.name or "") <(b.name or "") end)
-
 	self.setTemplates:Clear()
 	for _, template in ipairs(templates) do
 		self.setTemplates:AddEntry(template)
@@ -160,16 +193,11 @@ end
 function designer:UpdateStyleList()
 	self.styleList:Clear()
 
-	local GetItemStyleMaterialLink, GetItemLinkName, GetItemLinkName, GetItemLinkInfo, GetItemLinkQuality, GetItemStyleName = GetItemStyleMaterialLink, GetItemLinkName, GetItemLinkName, GetItemLinkInfo, GetItemLinkQuality, GetItemStyleName
-	local SI_TOOLTIP_ITEM_NAME = GetString(SI_TOOLTIP_ITEM_NAME)
-	for styleIndex = 1, GetHighestItemStyleId() do
-		local styleItemLink = GetItemStyleMaterialLink(styleIndex)
-		local icon, sellPrice, meetsUsageRequirement = GetItemLinkInfo(styleItemLink)
+	local GetSmithingStyleItemInfo = GetSmithingStyleItemInfo
+	for styleIndex = 1, GetNumSmithingStyleItems() do
+		local name, icon, sellPrice, meetsUsageRequirement, itemStyle, quality = GetSmithingStyleItemInfo(styleIndex)
 		if meetsUsageRequirement then
-			local quality = GetItemLinkQuality(styleItemLink)
-			local name = GetItemStyleName(styleIndex)
-			local itemStyle = GetItemLinkItemStyle(styleItemLink)
-			self.styleList:AddEntry( { craftingType = 0, styleIndex = styleIndex, name = name, localizedName = zo_strformat(SI_TOOLTIP_ITEM_NAME, name), itemStyle = itemStyle, icon = icon, quality = quality })
+			self.styleList:AddEntry( { craftingType = 0, styleIndex = styleIndex, name = name, itemStyle = itemStyle, icon = icon, quality = quality })
 		end
 	end
 
@@ -179,9 +207,9 @@ end
 function designer:InitItemList()
 	local function onMouseEnter(rowControl)
 		HideRowHighlight(rowControl, false)
-		InitializeTooltip(SetItemTooltip, rowControl, TOPRIGHT, 0, -104, TOPLEFT)
+		InitializeTooltip(ItemTooltip, rowControl, TOPRIGHT, 0, -104, TOPLEFT)
 		local rowData = ZO_ScrollList_GetData(rowControl)
-		SetItemTooltip:SetTemplateItemLink(rowData.itemLink, self.setTemplates:GetSelectedData(), false)
+		ItemTooltip:SetLink(rowData.itemLink)
 		self.itemList.hovered = ZO_ScrollList_GetData(rowControl)
 		KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybindStripDescriptorMouseOver)
 	end
@@ -190,37 +218,24 @@ function designer:InitItemList()
 		self.itemList.hovered = nil
 		KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybindStripDescriptorMouseOver)
 	end
-	local function onMouseClick(rowControl, button)
-		local rowData = ZO_ScrollList_GetData(rowControl)
-		if button == MOUSE_BUTTON_INDEX_RIGHT and IsChatSystemAvailableForCurrentPlatform() and rowData.itemLink then
-			ClearMenu()
-			AddCustomMenuItem(GetString(SET_MANAGER_APPLY_ITEM), function() self:ApplyItem(rowData) end)
-			AddCustomMenuItem(GetString(SI_ITEM_ACTION_LINK_TO_CHAT), function() ZO_LinkHandler_InsertLink(ZO_LinkHandler_CreateChatLink(ReturnItemLink, rowData.itemLink)) end)
-			ShowMenu(rowControl)
-		end
+	local function onMouseDoubleClick(rowControl)
 	end
 
 	local function setupDataRow(rowControl, rowData, scrollList)
 		local icon = rowControl:GetNamedChild("Texture")
 		local nameLabel = rowControl:GetNamedChild("Name")
-		local traitLabel = rowControl:GetNamedChild("Trait")
 
 		local itemName = GetItemLinkName(rowData.itemLink)
 		local iconTexture = GetItemLinkInfo(rowData.itemLink)
 		local quality = GetItemLinkQuality(rowData.itemLink)
-		local traitType = GetItemLinkTraitInfo(rowData.itemLink)
 
 		icon:SetTexture(iconTexture)
 		nameLabel:SetText(zo_strformat("<<C:1>>", itemName))
 		nameLabel:SetColor(GetItemQualityColor(quality):UnpackRGB())
 
-		traitLabel:SetText(zo_strformat("<<C:1>>", GetString("SI_ITEMTRAITTYPE", traitType)))
-
 		rowControl:SetHandler("OnMouseEnter", onMouseEnter)
 		rowControl:SetHandler("OnMouseExit", onMouseExit)
-		rowControl:SetHandler("OnClicked", onMouseClick)
-		rowControl:EnableMouseButton(MOUSE_BUTTON_INDEX_LEFT, false)
-		rowControl:EnableMouseButton(MOUSE_BUTTON_INDEX_RIGHT, true)
+		rowControl:SetHandler("OnMouseDoubleClick", onMouseDoubleClick)
 	end
 	self.itemList = SetManagerTopLevelItemList
 
@@ -230,32 +245,39 @@ end
 function designer:InitSetsList()
 	local function onMouseEnter(rowControl)
 		HideRowHighlight(rowControl, false)
+		InitializeTooltip(ItemTooltip, rowControl, TOPRIGHT, 0, -104, TOPLEFT)
 		local rowData = ZO_ScrollList_GetData(rowControl)
+		ItemTooltip:ClearLines()
+
 		local itemLink = rowData.itemLink
-		InitializeTooltip(SetItemTooltip, rowControl, TOPRIGHT, 0, -104, TOPLEFT)
-		SetItemTooltip:SetSetLink(itemLink)
+
+		local iconTexture = GetItemLinkInfo(itemLink)
+		ZO_ItemIconTooltip_OnAddGameData(ItemTooltip, TOOLTIP_GAME_DATA_ITEM_ICON, iconTexture)
+		ItemTooltip:AddVerticalPadding(24)
+
+		local hasSet, setName, numBonuses, _, maxEquipped = GetItemLinkSetInfo(itemLink)
+		if hasSet then
+			AddLineTitle(ItemTooltip, zo_strformat(SI_TOOLTIP_ITEM_NAME, setName))
+			ItemTooltip:AddVerticalPadding(-9)
+			ZO_Tooltip_AddDivider(ItemTooltip)
+			for i = 1, numBonuses do
+				local _, bonusDescription = GetItemLinkSetBonusInfo(itemLink, false, i)
+				AddLineCenter(ItemTooltip, bonusDescription)
+			end
+		end
 	end
 	local function onMouseExit(rowControl)
 		local rowData = ZO_ScrollList_GetData(rowControl)
 		HideRowHighlight(rowControl, self.setsList.selected ~= rowData.id)
 	end
 	local selectedRow
-	local function onMouseClick(rowControl, button)
+	local function onMouseDoubleClick(rowControl)
 		local rowData = ZO_ScrollList_GetData(rowControl)
-		if self.setsList.selected == rowData.id then
-			self.setsList.selected = nil
-		else
-			self.setsList.selected = rowData.id
-		end
+		self.setsList.selected = rowData.id
 		if selectedRow then ZO_ScrollList_RefreshVisible(self.setsList, selectedRow) end
-		selectedRow = self.setsList.selected and rowData or nil
-		if selectedRow then onMouseEnter(rowControl) end
+		selectedRow = rowData
 		self:UpdateItemList()
 		PlaySound(SOUNDS.DEFAULT_CLICK)
-	end
-
-	local function SetQuality(control, quality, sum)
-		control:SetAlpha(quality * quality /(2.5 * sum))
 	end
 
 	local function setupDataRow(rowControl, rowData, scrollList)
@@ -263,15 +285,12 @@ function designer:InitSetsList()
 		local nameLabel = rowControl:GetNamedChild("Name")
 
 		local setInfo = rowData.setInfo
-		local iconTexture
-		local setTypes = addon.SetType
-		local setInfo = rowData.setInfo
-		local category = setInfo.category
-		if category == setTypes.Craftable then
+		local iconiconTexture
+		if setInfo.isCraftable then
 			iconTexture = "/esoui/art/icons/poi/poi_crafting_complete.dds"
-		elseif category == setTypes.Monster then
+		elseif setInfo.isMonster then
 			iconTexture = "/esoui/art/icons/servicemappins/servicepin_undaunted.dds"
-		elseif category == setTypes.Jevelry then
+		elseif setInfo.isJevelry then
 			iconTexture = "/esoui/art/icons/servicemappins/servicepin_armory.dds"
 		else
 			iconTexture = "/esoui/art/icons/mapkey/mapkey_bank.dds"
@@ -279,14 +298,10 @@ function designer:InitSetsList()
 		icon:SetTexture(iconTexture)
 		nameLabel:SetText(zo_strformat("<<C:1>>", rowData.name))
 
-		local sum = setInfo.qualityM + setInfo.qualityH + setInfo.qualityS
-		SetQuality(rowControl:GetNamedChild("QualityM"), setInfo.qualityM, sum)
-		SetQuality(rowControl:GetNamedChild("QualityH"), setInfo.qualityH, sum)
-		SetQuality(rowControl:GetNamedChild("QualityS"), setInfo.qualityS, sum)
-
 		rowControl:SetHandler("OnMouseEnter", onMouseEnter)
 		rowControl:SetHandler("OnMouseExit", onMouseExit)
-		rowControl:SetHandler("OnClicked", onMouseClick)
+		-- rowControl:EnableMouseButton(1, true)
+		rowControl:SetHandler("OnClicked", onMouseDoubleClick)
 		onMouseExit(rowControl)
 	end
 	self.setsList = SetManagerTopLevelSetsList
@@ -296,9 +311,16 @@ function designer:InitSetsList()
 	ZO_ScrollList_AddDataType(self.setsList, ROW_TYPE_ID, "SetManagerSetsListRow", 48, setupDataRow, setupDataRow)
 end
 
+local function FakeEquippedItemTooltip(itemLink)
+	-- SetLink uses original functions only. They protected it.
+	-- Rewrite Tooltip???
+	ItemTooltip:SetLink(itemLink, true)
+	ZO_ItemTooltip_SetStolen(ItemTooltip, false)
+end
+
 function designer:InitSetTemplates()
 	local function InitSetTemplates(scrollListControl, listContainer, listSlotTemplate)
-		local function OnSelectedSlotChanged(control, button)
+		local function OnSelectedSlotChanged(control)
 			self.selectedSlot = control.selectedSlot
 			self:UpdateItemList()
 			PlaySound(SOUNDS.DEFAULT_CLICK)
@@ -310,14 +332,14 @@ function designer:InitSetTemplates()
 
 		local function onMouseEnter(rowControl)
 			if rowControl.itemLink then
-				InitializeTooltip(SetItemTooltip, rowControl, TOPRIGHT, 0, -104, TOPLEFT)
-				SetItemTooltip:SetTemplateItemLink(rowControl.itemLink, rowControl:GetParent().data, true)
+				InitializeTooltip(ItemTooltip, rowControl, TOPRIGHT, 0, -104, TOPLEFT)
+				FakeEquippedItemTooltip(rowControl.itemLink)
 				self.setTemplates.hoveredSlot = rowControl.slotId
 				KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybindStripDescriptorMouseOver)
 			end
 		end
 		local function onMouseExit(rowControl)
-			ClearTooltip(SetItemTooltip)
+			ClearTooltip(ItemTooltip, rowControl)
 			self.setTemplates.hoveredSlot = nil
 			KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybindStripDescriptorMouseOver)
 		end
@@ -335,6 +357,54 @@ function designer:InitSetTemplates()
 				slotControl:SetHandler("OnMouseEnter", onMouseEnter)
 				slotControl:SetHandler("OnMouseExit", onMouseExit)
 			end
+
+			-- 		if self:IsInvalidMode() then return end
+
+			-- 		SetupSharedSlot(control, SLOT_TYPE_SMITHING_TRAIT, listContainer, self.traitList)
+			-- 		ZO_ItemSlot_SetAlwaysShowStackCount(control, data.traitType ~= ITEM_TRAIT_TYPE_NONE)
+
+			-- 		control.traitIndex = data.traitIndex
+			-- 		control.traitType = data.traitType
+			-- 		local stackCount = GetCurrentSmithingTraitItemCount(data.traitIndex)
+			-- 		local hasEnoughInInventory = stackCount > 0
+			-- 		local isTraitKnown = false
+			-- 		if self:IsCraftableWithoutTrait() then
+			-- 			local patternIndex, materialIndex, materialQty, styleIndex = self:GetAllNonTraitCraftingParameters()
+			-- 			isTraitKnown = IsSmithingTraitKnownForResult(patternIndex, materialIndex, materialQty, styleIndex, data.traitIndex)
+			-- 		end
+			-- 		local usable = data.traitType == ITEM_TRAIT_TYPE_NONE or(hasEnoughInInventory and isTraitKnown)
+
+			-- 		ZO_ItemSlot_SetupSlot(control, stackCount, data.icon, usable, not enabled)
+
+			-- 		if selected then
+			-- 			SetHighlightColor(highlightTexture, usable)
+
+			-- 			self:SetLabelHidden(listContainer.extraInfoLabel, usable or data.traitType == ITEM_TRAIT_TYPE_NONE)
+			-- 			if usable then
+			-- 				self.isTraitUsable = USABILITY_TYPE_USABLE
+			-- 			else
+			-- 				self.isTraitUsable = USABILITY_TYPE_VALID_BUT_MISSING_REQUIREMENT
+			-- 				if not isTraitKnown then
+			-- 					listContainer.extraInfoLabel:SetText(GetString(SI_SMITHING_TRAIT_MUST_BE_RESEARCHED))
+			-- 				elseif not hasEnoughInInventory then
+			-- 					self:SetLabelHidden(listContainer.extraInfoLabel, true)
+			-- 				end
+			-- 			end
+
+			-- 			if not data.localizedName then
+			-- 				if data.traitType == ITEM_TRAIT_TYPE_NONE then
+			-- 					data.localizedName = GetString("SI_ITEMTRAITTYPE", data.traitType)
+			-- 				else
+			-- 					data.localizedName = self:GetPlatformFormattedTextString(SI_SMITHING_TRAIT_DESCRIPTION, data.name, GetString("SI_ITEMTRAITTYPE", data.traitType))
+			-- 				end
+			-- 			end
+
+			-- 			listContainer.selectedLabel:SetText(data.localizedName)
+
+			-- 			if not selectedDuringRebuild then
+			-- 				self:RefreshVisiblePatterns()
+			-- 			end
+			-- 		end
 		end
 
 		local function EqualityFunction(leftData, rightData)
@@ -360,31 +430,14 @@ end
 
 do
 	local function FilterByInventory(self, dataList)
-		local targetSetId, selectedSlot = self.setsList.selected, self.selectedSlot
+		local selectedSlot = self.selectedSlot
 		if not selectedSlot then return end
-		local GetItemLinkEquipType, ZO_Character_DoesEquipSlotUseEquipType, GetItemLinkSetInfo = GetItemLinkEquipType, ZO_Character_DoesEquipSlotUseEquipType, GetItemLinkSetInfo
-		local ItemFilter
-		local createLink = string.format
-		if targetSetId then
-			local itemLink = createLink("|H1:item:%i:%i:%i:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0|h|h", targetSetId, 370, 50)
-			local _, targetSetName = GetItemLinkSetInfo(itemLink, false)
-			function ItemFilter(itemLink)
-				local equipType = GetItemLinkEquipType(itemLink)
-				if ZO_Character_DoesEquipSlotUseEquipType(selectedSlot, equipType) then
-					local setName = select(2, GetItemLinkSetInfo(itemLink))
-					if setName == targetSetName then
-						local rowData = { itemLink = itemLink }
-						dataList[#dataList + 1] = ZO_ScrollList_CreateDataEntry(ROW_TYPE_ID, rowData, 1)
-					end
-				end
-			end
-		else
-			function ItemFilter(itemLink)
-				local equipType = GetItemLinkEquipType(itemLink)
-				if ZO_Character_DoesEquipSlotUseEquipType(selectedSlot, equipType) then
-					local rowData = { itemLink = itemLink }
-					dataList[#dataList + 1] = ZO_ScrollList_CreateDataEntry(ROW_TYPE_ID, rowData, 1)
-				end
+		local GetItemLinkEquipType, ZO_Character_DoesEquipSlotUseEquipType = GetItemLinkEquipType, ZO_Character_DoesEquipSlotUseEquipType
+		local function ItemFilter(itemLink)
+			local equipType = GetItemLinkEquipType(itemLink)
+			if ZO_Character_DoesEquipSlotUseEquipType(selectedSlot, equipType) then
+				local rowData = { id = itemId, itemLink = itemLink }
+				dataList[#dataList + 1] = ZO_ScrollList_CreateDataEntry(ROW_TYPE_ID, rowData, 1)
 			end
 		end
 		for _, itemLink in ipairs(addon.account.sets) do ItemFilter(itemLink) end
@@ -411,7 +464,7 @@ do
 			if name == targetSetName then
 				local equipType = GetItemLinkEquipType(itemLink)
 				if ZO_Character_DoesEquipSlotUseEquipType(selectedSlot, equipType) then
-					local rowData = { itemLink = itemLink }
+					local rowData = { id = itemId, itemLink = itemLink }
 					dataList[#dataList + 1] = ZO_ScrollList_CreateDataEntry(ROW_TYPE_ID, rowData, 1)
 				end
 			end
@@ -439,7 +492,7 @@ do
 			if name == targetSetName then
 				local equipType = GetItemLinkEquipType(itemLink)
 				if ZO_Character_DoesEquipSlotUseEquipType(selectedSlot, equipType) then
-					local rowData = { itemLink = itemLink }
+					local rowData = { id = itemId, itemLink = itemLink }
 					dataList[#dataList + 1] = ZO_ScrollList_CreateDataEntry(ROW_TYPE_ID, rowData, 1)
 				end
 			end
@@ -465,8 +518,9 @@ do
 				callback = function(tabData)
 					self.modeBar.label:SetText(GetString(name))
 					applySetFilter = filterFunc
+					self.mode = mode
 					addon.player.mode = mode
-					if mode == self.modes.Crafting then
+					if mode == "CRAFTING" then
 						ZO_ScrollList_HideCategory(self.setsList, addon.setCategory.NonCraftable)
 					else
 						ZO_ScrollList_ShowCategory(self.setsList, addon.setCategory.NonCraftable)
@@ -478,7 +532,7 @@ do
 
 		ZO_MenuBar_AddButton(self.modeBar, CreateButtonData(
 		SI_INVENTORY_MENU_INVENTORY,
-		self.modes.Inventory,
+		"INVENTORY",
 		"/esoui/art/inventory/inventory_tabicon_items_up.dds",
 		"/esoui/art/inventory/inventory_tabicon_items_down.dds",
 		"/esoui/art/inventory/inventory_tabicon_items_over.dds",
@@ -488,7 +542,7 @@ do
 
 		ZO_MenuBar_AddButton(self.modeBar, CreateButtonData(
 		SI_SMITHING_TAB_CREATION,
-		self.modes.Crafting,
+		"CRAFTING",
 		"/esoui/art/crafting/smithing_tabicon_creation_up.dds",
 		"/esoui/art/crafting/smithing_tabicon_creation_down.dds",
 		"/esoui/art/crafting/smithing_tabicon_creation_over.dds",
@@ -498,7 +552,7 @@ do
 
 		ZO_MenuBar_AddButton(self.modeBar, CreateButtonData(
 		SI_TRADING_HOUSE_BUY_ITEM,
-		self.modes.Buy,
+		"BUY",
 		"/esoui/art/vendor/vendor_tabicon_buy_up.dds",
 		"/esoui/art/vendor/vendor_tabicon_buy_down.dds",
 		"/esoui/art/vendor/vendor_tabicon_buy_over.dds",
@@ -537,8 +591,8 @@ do
 				disabled = "/esoui/art/buttons/gamepad/gp_checkbox_disabled.dds",
 				callback = function(tabData)
 					self.qualityBar.label:SetText(GetString(name))
-					if self.isOpen then
-						addon.player.quality = quality
+					if self.mode then
+						self.player.quality = quality
 						self:UpdateItemList()
 					end
 				end,
@@ -577,6 +631,7 @@ function designer:InitStyleList()
 		local usesUniversalStyleItem = false
 		local stackCount = GetCurrentSmithingStyleItemCount(data.styleIndex)
 		local hasEnoughInInventory = stackCount > 0
+		local universalStyleItemCount = GetCurrentSmithingStyleItemCount(ZO_ADJUSTED_UNIVERSAL_STYLE_ITEM_INDEX)
 		local isStyleKnown = true
 		local usable = true
 		ZO_ItemSlot_SetupSlot(control, stackCount, data.icon, usable, not enabled)
@@ -594,9 +649,22 @@ function designer:InitStyleList()
 				end
 			end
 
+			local universalStyleItemCount = GetCurrentSmithingStyleItemCount(ZO_ADJUSTED_UNIVERSAL_STYLE_ITEM_INDEX)
 			self.isStyleUsable = usable and USABILITY_TYPE_USABLE or USABILITY_TYPE_VALID_BUT_MISSING_REQUIREMENT
 
+			if not data.localizedName then
+				if data.itemStyle == ITEMSTYLE_NONE then
+					data.localizedName = GetString("SI_ITEMSTYLE", data.itemStyle)
+				else
+					data.localizedName = zo_strformat(SI_SMITHING_STYLE_DESCRIPTION, data.name, GetString("SI_ITEMSTYLE", data.itemStyle))
+				end
+			end
+
 			listContainer.selectedLabel:SetText(data.localizedName)
+
+			if not selectedDuringRebuild then
+				-- self:RefreshVisiblePatterns()
+			end
 		end
 	end
 
@@ -608,7 +676,7 @@ function designer:InitStyleList()
 		-- self:OnHorizonalScrollListCleared(...)
 	end
 
-	self.styleList = scrollListControl:New(listContainer.listControl, listSlotTemplate, 5, SetupFunction, EqualityFunction, OnHorizonalScrollListShown, OnHorizonalScrollListCleared)
+	self.styleList = scrollListControl:New(listContainer.listControl, listSlotTemplate, BASE_NUM_ITEMS_IN_LIST, SetupFunction, EqualityFunction, OnHorizonalScrollListShown, OnHorizonalScrollListCleared)
 	self.styleList:SetNoItemText(GetString(SI_SMITHING_NO_STYLE_FOUND))
 
 	self.styleList:SetSelectionHighlightInfo(highlightTexture, highlightTexture and highlightTexture.pulseAnimation)
@@ -620,72 +688,6 @@ function designer:InitStyleList()
 	end )
 end
 
-function designer:ApplyItem(data)
-	local selectedSet = self.setTemplates:GetSelectedData()
-	if not selectedSet then return end
-	if data then
-		local selectedSlot = self.selectedSlot
-		local hoveredItem = data
-		if not hoveredItem or not selectedSlot then return end
-
-		selectedSet[selectedSlot] = hoveredItem.itemLink
-
-		local soundCategory = GetItemSoundCategoryFromLink(hoveredItem.itemLink)
-		PlayItemSound(soundCategory, ITEM_SOUND_ACTION_EQUIP)
-	end
-	self.setTemplates:RefreshVisible()
-end
-
-function designer:RemoveItemFromSlot(slotId)
-	local selectedSet = self.setTemplates:GetSelectedData()
-	if not selectedSet then return end
-	if slotId then
-		local soundCategory = GetItemSoundCategoryFromLink(selectedSet[slotId])
-		selectedSet[slotId] = nil
-		PlayItemSound(soundCategory, ITEM_SOUND_ACTION_UNEQUIP)
-	end
-	self.setTemplates:RefreshVisible()
-end
-
-local function NewSet()
-	local self = designer
-	local templates = addon.account.templates
-	local template = { }
-	templates[#templates + 1] = template
-
-	self.setTemplates:AddEntry(template)
-	self.setTemplates:Commit()
-	self.setTemplates:SetSelectedDataIndex(#templates)
-	KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybindStripDescriptor)
-	return template
-end
-
-local function CopyEquipped()
-	local self = designer
-	local selectedSet = self.setTemplates:GetSelectedData()
-	if not selectedSet then return end
-
-	local name = zo_strformat(SI_UNIT_NAME, GetUnitName("player"))
-	if selectedSet.name ~= nil and #selectedSet.name > 0 and selectedSet.name ~= name then
-		selectedSet = NewSet()
-		if not selectedSet then return end
-	end
-
-	local bagId = BAG_WORN
-	local slotIndex = ZO_GetNextBagSlotIndex(bagId, nil)
-	local GetItemLink = GetItemLink
-	while slotIndex do
-		local itemLink = GetItemLink(bagId, slotIndex)
-		if itemLink == "" then itemLink = nil end
-		selectedSet[slotIndex] = itemLink
-		slotIndex = ZO_GetNextBagSlotIndex(bagId, slotIndex)
-	end
-	selectedSet.name = name
-
-	self.setTemplates:RefreshVisible()
-	PlaySound(SOUNDS.DEFAULT_CLICK)
-end
-
 local function InitKeybindStripDescriptor()
 	local self = designer
 
@@ -694,24 +696,19 @@ local function InitKeybindStripDescriptor()
 		alignment = KEYBIND_STRIP_ALIGN_CENTER,
 
 		{
-			name = GetString(SI_BINDING_NAME_SET_MANAGER_COPY_EQUIPPED),
-			keybind = "UI_SHORTCUT_SECONDARY",
-
-			callback = CopyEquipped,
-
-			visible = function()
-				return true
-			end,
-
-			enabled = function()
-				return self.setTemplates:GetSelectedData() ~= nil
-			end
-		},
-		{
 			name = GetString(SI_BINDING_NAME_SET_MANAGER_ADD_SET),
 			keybind = "UI_SHORTCUT_TERTIARY",
 
-			callback = NewSet,
+			callback = function()
+				local templates = addon.account.templates
+				local template = { }
+				templates[#templates + 1] = template
+
+				self.setTemplates:AddEntry(template)
+				self.setTemplates:Commit()
+				self.setTemplates:SetSelectedDataIndex(#templates)
+				KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybindStripDescriptor)
+			end,
 
 			visible = function()
 				return true
@@ -730,7 +727,6 @@ local function InitKeybindStripDescriptor()
 					table.remove(self.setTemplates.list, index)
 					self.setTemplates:Commit()
 					KEYBIND_STRIP:UpdateKeybindButtonGroup(self.keybindStripDescriptor)
-					PlaySound(SOUNDS.INVENTORY_ITEM_JUNKED)
 				end
 			end,
 
@@ -748,15 +744,27 @@ local function InitKeybindStripDescriptor()
 		alignment = KEYBIND_STRIP_ALIGN_RIGHT,
 
 		{
-			name = function() return GetString(self.itemList.hovered and SET_MANAGER_APPLY_ITEM or SET_MANAGER_REMOVE_ITEM) end,
+			name = function() return self.itemList.hovered and "Apply" or "Remove" end,
 			keybind = "UI_SHORTCUT_PRIMARY",
 
 			callback = function()
+				local selectedSet = self.setTemplates:GetSelectedData()
+				if not selectedSet then return end
 				if self.itemList.hovered then
-					self:ApplyItem(self.itemList.hovered)
+					local selectedSlot = self.selectedSlot
+					local hoveredItem = self.itemList.hovered
+					if not hoveredItem or not selectedSlot then return end
+
+					selectedSet[selectedSlot] = hoveredItem.itemLink
+
+					local soundCategory = GetItemSoundCategoryFromLink(hoveredItem.itemLink)
+					PlayItemSound(soundCategory, ITEM_SOUND_ACTION_EQUIP)
 				elseif self.setTemplates.hoveredSlot then
-					self:RemoveItemFromSlot(self.setTemplates.hoveredSlot)
+					local soundCategory = GetItemSoundCategoryFromLink(selectedSet[self.setTemplates.hoveredSlot])
+					selectedSet[self.setTemplates.hoveredSlot] = nil
+					PlayItemSound(soundCategory, ITEM_SOUND_ACTION_UNEQUIP)
 				end
+				self.setTemplates:RefreshVisible()
 			end,
 
 			visible = function()
@@ -832,7 +840,6 @@ function designer:Init()
 	SETMANAGER_CHARACTER_FRAGMENT:RegisterCallback("StateChange", function(oldState, newState)
 		if newState == SCENE_FRAGMENT_SHOWING then
 			self:InitWindow()
-			self.isOpen = false
 			ZO_Character_SetIsShowingReadOnlyFragment(true)
 			if self.setsList.dirty then
 				self:UpdateSetsList()
@@ -850,10 +857,8 @@ function designer:Init()
 			ZO_MenuBar_SelectDescriptor(self.modeBar, addon.player.mode)
 
 			self:UpdateStyleList()
-			self.isOpen = true
 		elseif newState == SCENE_FRAGMENT_HIDING then
-			self.isOpen = false
-			ClearTooltip(SetItemTooltip)
+			ClearTooltip(ItemTooltip)
 			KEYBIND_STRIP:RemoveKeybindButtonGroup(self.keybindStripDescriptorMouseOver)
 			KEYBIND_STRIP:RemoveKeybindButtonGroup(self.keybindStripDescriptor)
 			RemoveActionLayerByName(GetString(SI_KEYBINDINGS_LAYER_SET_MANAGER))
