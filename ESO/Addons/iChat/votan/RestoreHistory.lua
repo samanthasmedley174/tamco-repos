@@ -31,7 +31,6 @@ local function callback(chat)
 		for _, container in pairs(chat.containers) do container.control:SetHidden(false) end
 		addon.events:RegisterCallback("OnChatEvent", AddChatToHistory)
 		addon.events:FireCallbacks("HistoryRestored", chat)
-		collectgarbage()
 	end )
 end
 addon.events:RegisterCallback("ChatSystemReady", callback)
