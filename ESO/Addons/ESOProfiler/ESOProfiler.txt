@@ -4,7 +4,7 @@
 ## Version: 1.0.0
 ## DependsOn: LibStub LibAsync
 -- ## OptionalDependsOn: LibStub LibAddonMenu-2.0 LibAsync
-## SavedVariables: ESOProfiler_Export
+-- ## SavedVariables: 
 
 ## This Add-On is not created by, affiliated with or sponsored by ZeniMax Media Inc. or its affiliates. The Elder Scrolls� and related logos are registered trademarks or trademarks of ZeniMax Media Inc. in the United States and/or other countries. All rights reserved.
 
@@ -13,6 +13,5 @@ lang/$(language).lua
 
 Controls.xml
 Main.lua
-ProfilerData.lua
 
 Bindings.xml

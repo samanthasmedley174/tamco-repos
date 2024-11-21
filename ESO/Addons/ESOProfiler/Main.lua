@@ -18,10 +18,8 @@ do
 	function StartScriptProfiler()
 		if addon.profiling then return end
 		addon.newRun = GetGameTimeMilliseconds()
-		addon.startTime = GetTimeStamp()
 		addon.profiling = true
 		UpdateKeybind()
-        d("Start profiler....")
 		return orgStartScriptProfiler()
 	end
 	local orgStopScriptProfiler = StopScriptProfiler
@@ -30,7 +28,6 @@ do
 		addon.profiling = false
 		addon.hasProfile = true
 		UpdateKeybind()
-        d("Profiler stopped ....")
 		return orgStopScriptProfiler()
 	end
 end
@@ -38,24 +35,25 @@ end
 -- TODO: Someday there will be multiple record types, and they will be delineated by a SCRIPT_PROFILER_RECORD_TYPE enum.
 local SCRIPT_PROFILER_RECORD_TYPE_CLOSURE = 1
 
-local profile
 function addon:GenerateReport()
 	if self.lastProfile == self.newRun or self.profiling then return end
 	self.lastProfile = self.newRun
 
 	local numRecords = 0
 
-	local recordDataByRecordType = {
+	local recordDataByRecordType =
+	{
 		[SCRIPT_PROFILER_RECORD_TYPE_CLOSURE] = { },
 	}
-    profile = recordDataByRecordType
+	self.profile = recordDataByRecordType
 
 	local GetScriptProfilerClosureInfo = GetScriptProfilerClosureInfo
 	local function GetOrCreateRecordData(recordType, recordDataIndex)
 		local recordData = recordDataByRecordType[recordType]
 		-- assert(recordData, "Missing record type")
 		if not recordData[recordDataIndex] then
-			local data = {
+			local data =
+			{
 				count = 0,
 				includeTime = 0,
 				includeTimeMin = 1e99,
@@ -115,10 +113,6 @@ function addon:GenerateReport()
 		content:SetHidden(false)
 	end
 
-	local _, upTime = GetScriptProfilerRecordInfo(1, 1)
-	local profilerData = ESO_PROFILER.ProfilerData:New(self.startTime, upTime)
-	self.profilerData = profilerData
-
 	local numFrames = GetScriptProfilerNumFrames()
 	self.numFrames = numFrames
 
@@ -130,7 +124,6 @@ function addon:GenerateReport()
 	task:Cancel():For(1, numFrames):Do( function(frameIndex)
 		statusBar:SetValue(frameIndex)
 		task:For(1, GetScriptProfilerFrameNumRecords(frameIndex)):Do( function(recordIndex)
-			profilerData:ProcessRecord(frameIndex, recordIndex)
 			ParseRecord(frameIndex, recordIndex)
 			numRecords = numRecords + 1
 		end )
@@ -145,7 +138,7 @@ function addon:PrintReport()
 	local ZO_ScrollList_CreateDataEntry = ZO_ScrollList_CreateDataEntry
 	local text = self.searchBox:GetText()
 	if text == "" then
-        task:For(pairs(profile)):Do( function(recordType, recordDatas)
+		task:For(pairs(self.profile)):Do( function(recordType, recordDatas)
 			task:For(pairs(recordDatas)):Do( function(recordDataIndex, recordData)
 				dataList[#dataList + 1] = ZO_ScrollList_CreateDataEntry(recordType, recordData)
 			end )
@@ -154,7 +147,7 @@ function addon:PrintReport()
 		text = text:lower()
 		local zo_plainstrfind = zo_plainstrfind
 		local line = tonumber(text)
-        task:For(pairs(profile)):Do( function(recordType, recordDatas)
+		task:For(pairs(self.profile)):Do( function(recordType, recordDatas)
 			task:For(pairs(recordDatas)):Do( function(recordDataIndex, recordData)
 				if zo_plainstrfind(recordData.name:lower(), text) or zo_plainstrfind(recordData.filename:lower(), text) or line == recordData.lineDefined then
 					dataList[#dataList + 1] = ZO_ScrollList_CreateDataEntry(recordType, recordData)
@@ -166,13 +159,6 @@ function addon:PrintReport()
 		local sortHeaders = self.sortHeaders
 		self:ChangeSort(sortHeaders.selectedSortHeader.key, sortHeaders.sortDirection)
 	end )
-end
-
-function addon:Export()
-	if(self.profilerData) then
-		ESOProfiler_Export = self.profilerData:Export()
-		ReloadUI()
-	end
 end
 ----------------------------------
 
@@ -227,7 +213,7 @@ do
 		while num > 0 and selectedData.calledBy do
 			selectedData = selectedData.calledBy
 			num = num - 1
-            text[#text + 1] = string.format("%s (|cefefef%s:%i|r)", selectedData.name, selectedData.filename, selectedData.lineDefined)
+			text[#text + 1] = string.format("=>%s in |cefefef%s:%i|r", selectedData.name, selectedData.filename, selectedData.lineDefined)
 		end
 		if #text > 0 then
 			AddLine(ItemTooltip, table.concat(text, "\n"), ZO_TOOLTIP_DEFAULT_COLOR, TEXT_ALIGN_LEFT)
@@ -436,8 +422,6 @@ local function OnAddonLoaded(event, name)
 	if name ~= addon.name then return end
 	em:UnregisterForEvent(addon.name, EVENT_ADD_ON_LOADED)
 	addon:Initialize()
-	-- clear last export on load to prevent longer loading times due to the huge amount of data
-	ESOProfiler_Export = ESO_PROFILER.GetEmptySaveData(0, 0)
 	-- addon:InitSettings()
 end
 
