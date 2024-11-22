@@ -104,14 +104,11 @@ local function HookLibHarvensAddonSettings()
 
 	local function RefreshPanel(panel)
 		local addonSettings = panel and panel.addonSettings
-		if addonSettings then
-			local isLibHarvensAddon = addonSettings.__index == LibHarvensAddonSettings.AddonSettings
-			if isLibHarvensAddon then
-				if not addonSettings.selected then
-					addonSettings:Select()
-				end
-				LibHarvensAddonSettings:RefreshAddonSettings()
+		if addonSettings and addonSettings.Select then
+			if not addonSettings.selected then
+				addonSettings:Select()
 			end
+			LibHarvensAddonSettings:RefreshAddonSettings()
 		end
 	end
 
@@ -162,4 +159,11 @@ local function HookLibHarvensAddonSettings()
 	end
 end
 
-HookLibHarvensAddonSettings()
+-- Hook newest version, even if newer than the included version
+local function PlayerActivated()
+	EVENT_MANAGER:UnregisterForEvent("has2lam", EVENT_PLAYER_ACTIVATED)
+	HookLibHarvensAddonSettings()
+	--LibHarvensAddonSettings:Initialize()
+end
+
+EVENT_MANAGER:RegisterForEvent("has2lam", EVENT_PLAYER_ACTIVATED, PlayerActivated)
