@@ -422,15 +422,15 @@ end
 function LibHarvensAddonSettings.AddonSettings:RefreshSelection()
 	local list = LibHarvensAddonSettings.list
 	if #self.settings > 0 then
-		list:SetSelectedIndexWithoutAnimation(
-			list:FindFirstIndexByEval(
-				function(data)
-					return data == self.lastSelectedRow
-				end
-			) or list:CalculateFirstSelectableIndex(),
-			true,
-			false
-		)
+		local selectedIndex = list:FindFirstIndexByEval(
+			function(data)
+				return data == self.lastSelectedRow
+			end
+		) or list:CalculateFirstSelectableIndex()
+
+		list:EnableAnimation(false)
+		list:SetSelectedIndex(selectedIndex)
+		list:EnableAnimation(true)
 	end
 end
 
